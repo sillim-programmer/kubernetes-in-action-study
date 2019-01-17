@@ -16,7 +16,7 @@
 
 ### 오리엔테이션
 ### 1주차 
-- 2장 도커와 쿠버네티스의 첫걸음 : 송성곤
+- 2장 [도커와 쿠버네티스의 첫걸음](https://github.com/sillim-programmer/kubernetes-in-action-study/blob/master/K8s_in_action02.pdf) : 송성곤
 - 3장 포드: 쿠버네티스에서 컨테이너 실행하기 : 남상균
 ### 2주차
 - 4장 레플리케이션과 그밖의 컨트롤러: 포드 배포 관리 : 박진수
