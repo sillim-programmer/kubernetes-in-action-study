@@ -29,7 +29,7 @@ StatefulSet은 같은 애완동울을 부활시키듯, 관리되는 Pod들을 �
 ### 10.2.2. Providing a stable network identity
 StatefulSet에 의해 생성된 Pod들은 규칙적인 이름을 갖는다. ReplicaSet이 만든 Pod의 이름은 뒤에 해시값이 붙지만, StatefulSet이 만든 Pod은 0부터 순서대로 숫자가 붙는다.
 
-![](https://dpzbhybb2pdcj.cloudfront.net/luksa/Figures/10fig05_alt.jpg)
+<img src="https://dpzbhybb2pdcj.cloudfront.net/luksa/Figures/10fig05_alt.jpg" width="400">
 
 #### Introducing the governing Service - Headless Service
 일반적으로 상태가 없는 분산형 서비스라면 그냥 앞에서 로드발란싱을 잘 해주면 되겠지만, 각각 상태가 있는 분산형 서비스는 각 인스턴스들이 개별로 동작하기 때문에 일반적으로 로드발란싱하지 않고 각각 주소를 필요로 한다. StatefulSet에서는 이러한 요구사항에 대응하기 위해서 관리용 Headless Service를 만든다.
@@ -51,7 +51,7 @@ StatefulSet에서 Pod을 scale-out하면 사용되지 않은 다음 인덱스 �
 (각 스테이트풀 인스턴스에 안정적인 전용 스토리지 제공)
 
 #### 복습 - PersistentVolume & PersistentVolumeClaim
-![](https://dpzbhybb2pdcj.cloudfront.net/luksa/Figures/06fig10_alt.jpg)
+<img src="https://dpzbhybb2pdcj.cloudfront.net/luksa/Figures/06fig10_alt.jpg" width="500">
 
 각각 상태가 있기 때문에 각 Pod들의 스토리지는 다른 Pod들과 분리되어야 한다. 그리고 6장에서 PersistentVolume과 PersistentVolumeClaim을 통해서 Pod에 영구 스토리지를 매핑하는 것을 배웠다. 
 
@@ -59,7 +59,7 @@ StatefulSet에서 Pod을 scale-out하면 사용되지 않은 다음 인덱스 �
 
 StatefulSet에서 스케일다운 같은 상황을 통해 Pod이 종료되더라도 PersistentVolumeClaim은 삭제되지 않는다. 만약 다시 스케일업 할때 새로 만들어진 인스턴스가 기존 PersistentVolumeClaim에 연결된다. 만약 지우고 싶다면 수동으로 지워야한다.
 
-![](https://dpzbhybb2pdcj.cloudfront.net/luksa/Figures/10fig09_alt.jpg)
+<img src="https://dpzbhybb2pdcj.cloudfront.net/luksa/Figures/10fig09_alt.jpg" width="400">
 
 ### 10.2.4. Understanding StatefulSet guarantees
 
@@ -116,8 +116,43 @@ kubectl create -f kubia-statefulset.yaml
 
 :warning: 중요포인트! Pod이 동시에 생성되는 것이 아니고 하나씩 생성된다.
 
+### 10.3.3. 실제 포드로 동작해보기
 
+API 서버를 통해서 포드와 통신한다.
 
+<img src="https://dpzbhybb2pdcj.cloudfront.net/luksa/Figures/10fig10_alt.jpg" width="500">
+
+```sh
+# kube proxy 실행
+kuberctl proxy
+# GET test
+curl localhost:8001/api/v1/namespaces/default/pods/kubia-0/proxy/
+# POST test
+curl -X POST -d "Hey there! This greeting was submitted to kubia-0." \
+localhost:8001/api/v1/namespaces/default/pods/kubia-0/proxy/
+```
+
+#### 강제로 팟을 삭제해보고 같은 스토리지에 붙는지 테스트해본다.
+```sh
+kubectl delete po kubia-0
+```
+
+<img src="https://dpzbhybb2pdcj.cloudfront.net/luksa/Figures/10fig11_alt.jpg" width="500">
+
+### 10.4. DNS를 이용한 Peer 검색
+
+SRV 레코드는 특정 서비스를 제공하는 서버의 호스트 이름 및 포트를 가리키는데 사용된다. 쿠버네티스는 헤드리스 서비스를 지원하는 포드의 호스트 이름을 가리키도록 SRV 레코드를 만든다. 
+
+애플리케이션(팟)은 DNS에 SRV lookup을 통해서 Peer의 주소를 가져올 수 있다.
+
+<img src="https://dpzbhybb2pdcj.cloudfront.net/luksa/Figures/10fig12_alt.jpg" width="400">
+
+### 10.5. 스테이트풀셋 장애 제거
+노드가 네트워크 장애가 생겼을 때, Pod은 제거되지 않고 Unknown 상태가 된다. kubelet이 Pod의 컨테이너가 종료되었음을 API 서버에 알릴 수 없기 때문이다. 그래서 만약 실제로 이런 상황이 생겨서 새로운 팟을 띄워야한다면 장애가 난 팟을 강제로 지워야 한다.
+
+```
+kubectl delete po kubia-0 --force --grace-period 0
+```
 
 ## 참고 링크
 - 소스코드 : https://github.com/luksa/kubernetes-in-action/tree/master/Chapter10
