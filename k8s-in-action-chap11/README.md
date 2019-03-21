@@ -103,8 +103,8 @@ etcd-0               Healthy   {"health": "true"}
 
 ## 쿠버네티스와 API Server를 통해 etcd에 읽고 쓰는 이유
 
-* 저장소 추상화 (like DIP)
-* 유효성 검사 위임
+* 저장소 추상화
+* 유효성 검사
 * 낙관적(Optimistic) Tx (metadata.resourceVersion)
 
 </div>
@@ -116,14 +116,17 @@ etcd-0               Healthy   {"health": "true"}
 ## etcd에 리소스를 저장하는 방법
 
 ~~~
-$ etcdctl ls /registry                    # <= v2
-or 
-$etcdctl get /registry --prefix=true      # v3 <=
+$ export ETCDCTL_API=3
+$ etcdctl --endpoints https://127.0.0.1:2379 \
+   --cacert /etc/kubernetes/pki/etcd/ca.crt \
+   --cert /etc/kubernetes/pki/etcd/server.crt \
+   --key /etc/kubernetes/pki/etcd/server.key \
+   get / --prefix=true --keys-only
 
 /registry/configmaps
 /registry/daemonsets
 /registry/deployments
-/registry/events
+/registry/event
 /registry/namespaces
 /registry/pods
 ...
@@ -154,17 +157,10 @@ $etcdctl get /registry --prefix=true      # v3 <=
 
 ## API 서버가 하는 일
 
-</div>
-
------------------------------------------
-
-<div style="font-size:75%">
-
-</div>
-
------------------------------------------
-
-<div style="font-size:75%">
+* 클러스터 상태를 조회 및 수정할 수 있는 인터페이스 제공.
+* 변경된 상태를 etcd에 저장.
+* object의 유효성 검사.
+* Optimistic Locking 처리
 
 </div>
 
@@ -172,11 +168,74 @@ $etcdctl get /registry --prefix=true      # v3 <=
 
 <div style="font-size:75%">
 
+## API 서버의 동작
+
+* 인증 플러그인 - 클라이언트 인증
+* 권한 승인 플러그인 - 클라이언트 권한 승인
+* 승인 제어 플러그인 - 요청 받은 리소스를 조회 및 수정
+* resource validation - 리소스의 검증 및 저장
+
+<img src="architecture-03.jpg" width="1000px" />
+
 </div>
 
 -----------------------------------------
 
 <div style="font-size:75%">
+
+## API 서버가 리소스 변경을 통지하는 방법
+
+* API 서버에 리소스 변경 요청이 오면 해당 요청을 처리한 뒤 해당 리소스를 감시하는 클라이언트들에게 API 서버가 통지함.
+* Long-Polling과 유사한 방식으로 구현 (Why not implement it as http2?).
+
+</br>
+
+<img src="architecture-04.jpg" width="1000px" />
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## API 서버가 리소스 변경을 통지하는 방법
+
+```
+$ vi /etc/kubernetes/manifests/kube-apiserver.yaml
+$ systemctl restart kubelet
+
+apiVersion: v1
+kind: Pod
+metadata:
+  ...
+spec:
+  containers:
+  - command:
+    ...
+    - --insecure-port=8080
+```
+
+```
+$ curl --http1.0 http://localhost:8080/api/v1/pods?watch=true
+
+$ curl http://localhost:8080/api/v1/pods?watch=true
+```
+
+```
+$ tcpdump -nlX -i lo port 8080
+```
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## API 서버가 리소스 변경을 통지하는 방법
+
+```
+
+```
 
 </div>
 
