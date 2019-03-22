@@ -185,12 +185,15 @@ $ etcdctl --endpoints https://127.0.0.1:2379 \
 
 ## API 서버가 리소스 변경을 통지하는 방법
 
-* API 서버에 리소스 변경 요청이 오면 해당 요청을 처리한 뒤 해당 리소스를 감시하는 클라이언트들에게 API 서버가 통지함.
-* Long-Polling과 유사한 방식으로 구현 (Why not implement it as http2?).
+* API 서버는 etcd의 watch api를 이용하여 subscribe
+* API 서버에 리소스 변경 요청이 오면 해당 요청을 etcd에 저장.
+* etcd에서 변경이 일어난 key를 publish
+* notification을 받은 API 서버는 watch api를 요청한 클라이언트에 notify
+* Long-Polling(http1.0), Chunked Streaming(http1.1) 방식으로 구현 (Why not implement it as http2?).
 
 </br>
 
-<img src="architecture-04.jpg" width="1000px" />
+<img src="architecture-04.jpg" width="800px" />
 
 </div>
 
@@ -221,9 +224,6 @@ $ curl --http1.0 http://localhost:8080/api/v1/pods?watch=true
 $ curl http://localhost:8080/api/v1/pods?watch=true
 ```
 
-```
-$ tcpdump -nlX -i lo port 8080
-```
 
 </div>
 
@@ -234,6 +234,8 @@ $ tcpdump -nlX -i lo port 8080
 ## API 서버가 리소스 변경을 통지하는 방법
 
 ```
+$ tcpdump -nlX -i lo port 8080
+
 
 ```
 
