@@ -436,6 +436,76 @@ Date: Fri, 22 Mar 2019 05:42:32 GMT
 
 <div style="font-size:75%">
 
+## Kubelet
+
+* Worker Node에서 실행되는 모든 것에 책임을 가짐.
+* 초기 실행 시 Kubelet이 실행되는 Host를 Node Resource로 등록.
+* 해당 Node에 Schedule된 Pod을 모니터링하여 Pod의 Container를 실행.
+* 실행 중인 Container를 지속적으로 모니터링하고 상태와 이벤트, 리소스 소모를 API 서버에 통지.
+* readness, liveness probe를 실행하는 컴포넌트.
+* Pod Resource가 삭제됐을 때 Container를 중지하고 완전히 중지되면 API 서버에 통지.
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+  
+## Kubelet
+
+* 특정 local directory의 manifests 파일 기반으로 Pod 생성 가능
+* Control Plane Pods (ex. kube-apiserver, kube-control-manager ... )
+```
+$ ls /etc/kubernetes/manifests
+etcd.yaml  kube-apiserver.yaml  kube-controller-manager.yaml  kube-scheduler.yaml
+```
+
+<img src="architecture-08.jpg" width="700px"/>
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## Kubernetes Proxy
+
+* 모든 Worker Node는 kube-proxy를 실행.
+* Service Object로 Client가 연결할 수 있도록 하는 것이 목적.
+* Service가 둘 이상의 Pod으로 연결되면 해당 노드에서 LoadBalancing을 수행.
+* 초기 버전의 구현은 iptables의 userspace redirect를 이용하여 구현.
+* 현재는 일반적인 iptables의 Rule로 구현.
+
+<img src="architecture-09.jpg" width="700px" />
+
+<img src="architecture-10.jpg" width="700px" />
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+  
+## Kubernetes Add-On
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
 </div>
 
 -----------------------------------------
