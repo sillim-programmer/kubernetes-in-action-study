@@ -488,17 +488,57 @@ etcd.yaml  kube-apiserver.yaml  kube-controller-manager.yaml  kube-scheduler.yam
   
 ## Kubernetes Add-On
 
-</div>
-
------------------------------------------
-
-<div style="font-size:75%">
+* DNS, Ingress, Web Dashboard 등.
+* Yaml Manifests를 통해 Pod처럼 배포.
+* Deployments, ReplicationSet/Controller, DaemonSet의 형태로 배포.
 
 </div>
 
 -----------------------------------------
 
 <div style="font-size:75%">
+
+## DNS 서버
+
+* Kubernetes Cluster의 모든 Pod은 내부 DNS 서버를 사용하도록 구성하는 것이 기본.
+* Cluster에 배포되는 모든 Container 내부의 /etc/resolv.conf 파일에 nameserver로 등록
+```
+$ root@k8s-master:/home/h# kubectl exec -it sample cat /etc/resolv.conf
+nameserver 10.96.0.10
+search default.svc.k8s svc.k8s k8s
+options ndots:5
+```
+* API 서버의 watch interface를 이용하여 Pod, Service, Endpoints의 변화를 관찰
+* 최신의 DNS 정보를 유지.
+* Resource가 갱신될 때 watch interface를 통해 통지 받는 사이 잠시동안 DNS Record가 유효하지 않을 수 있음.
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## Ingress Controller
+
+* Nginx등의 Reverse Proxy를 실행.
+* Ingress, Service, Endpoint Resource를 감시하여 구성.
+* Ingress Resource의 정의가 서비스를 가리키고 있지만 Ingress는 Service IP 대신 직접 Pod로 트래픽을 전달.
+* Source IP의 보존에 영향을 줌.
+
+* from Service
+
+```
+$ root@k8s-worker1:/home/h# tcpdump -i calib43f921251f
+03:08:19.315423 IP 192.168.0.1.60378 > 192.168.1.40.http-alt: Flags [P.], seq 1:83, ack 1, win 229, options [nop,nop,TS val 3164462534 ecr 3348765433], length 82: HTTP: GET / HTTP/1.1
+03:08:19.315760 IP 192.168.1.40.http-alt > 192.168.0.1.60378: Flags [P.], seq 1:143, ack 83, win 227, options [nop,nop,TS val 3348765434 ecr 3164462534], length 142: HTTP: HTTP/1.1 200 OK
+```
+
+* from Ingress
+```
+$ root@k8s-worker1:/home/h# tcpdump -i calib43f921251f
+03:04:09.025471 IP 192.168.1.38.44304 > 192.168.1.40.http-alt: Flags [P.], seq 1:310, ack 1, win 229, options [nop,nop,TS val 2177334759 ecr 1588388826], length 309: HTTP: GET /sample HTTP/1.1
+03:04:09.025669 IP 192.168.1.40.http-alt > 192.168.1.38.44304: Flags [P.], seq 1:143, ack 310, win 235, options [nop,nop,TS val 1588388827 ecr 2177334759], length 142: HTTP: HTTP/1.1 200 OK
+```
 
 </div>
 
