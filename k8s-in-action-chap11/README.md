@@ -12,12 +12,12 @@
 
 ## 아키텍처 이해
 
-* Kubernetes Control Plane
+* Master Components (Control Plane)
 	* etcd Distributed Storage
 	* API Server
 	* scheduler
 	* control manager
-* Worker Nodes
+* Node Components
 	* Kubelet
 	* Kubernetes Service Proxy (kube-proxy)
 	* container runtime
@@ -80,11 +80,11 @@ etcd-0               Healthy   {"health": "true"}
 
 ## 컴포넌트의 고가용성
 
-* Control Plane
+* Master Components
 	* etcd는 Clustering
 	* API Server는 Multi-Active
 	* Control Manager, Scheduler는 Active-Standby
-* Worker Nodes
+* Node Components
 	* 전체 컴포넌트가 각각의  Worker Node에서 실행
 
 </div>
@@ -105,7 +105,7 @@ etcd-0               Healthy   {"health": "true"}
 
 * 저장소 추상화
 * 유효성 검사
-* 낙관적(Optimistic) Tx (metadata.resourceVersion)
+* 낙관적(Optimistic) Tx (metadata.resourceVersion) (etcd2를 사용하는 경우)
 
 </div>
 
@@ -160,7 +160,9 @@ $ etcdctl --endpoints https://127.0.0.1:2379 \
 * 클러스터 상태를 조회 및 수정할 수 있는 인터페이스 제공.
 * 변경된 상태를 etcd에 저장.
 * object의 유효성 검사.
-* Optimistic Locking 처리
+* Optimistic Locking 처리 (etcd2를 사용하는 경우. v1.13부터 미지원).
+* Kubernetes v1.5.1 이후 etcd3를 사용하면(v1.6부터 default) etcd의 tx를 사용.
+* Kubernetes repository - staging/src/k8s.io/apiserver/pkg/storage/etcd/api_object_versioner.go, staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go
 
 </div>
 
