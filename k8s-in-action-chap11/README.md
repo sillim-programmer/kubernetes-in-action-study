@@ -349,6 +349,7 @@ Date: Fri, 22 Mar 2019 05:42:32 GMT
 * API 서버를 통해 리소스의 변경을 감시하고, 오브젝트의 생성, 갱신, 삭제 등의 동작을 수행.
 * 실제 상태를 원하는 상태로 변경을 시도.
 * 변경 된 실제 상태를 Resource의 Status 필드에 반영.
+* Controller 간에는 직접 통신하지 않음.
 * Controller는 Kubelet과 직접 통신하지 않음.
 
 </div>
@@ -523,9 +524,8 @@ options ndots:5
 * Nginx등의 Reverse Proxy를 실행.
 * Ingress, Service, Endpoint Resource를 감시하여 구성.
 * Ingress Resource의 정의가 서비스를 가리키고 있지만 Ingress는 Service IP 대신 직접 Pod로 트래픽을 전달.
-* Source IP의 보존에 영향을 줌.
-
-* from Service
+</br>
+* curl -XGET 'http://service:8080'
 
 ```
 $ root@k8s-worker1:/home/h# tcpdump -i calib43f921251f
@@ -533,7 +533,7 @@ $ root@k8s-worker1:/home/h# tcpdump -i calib43f921251f
 03:08:19.315760 IP 192.168.1.40.http-alt > 192.168.0.1.60378: Flags [P.], seq 1:143, ack 83, win 227, options [nop,nop,TS val 3348765434 ecr 3164462534], length 142: HTTP: HTTP/1.1 200 OK
 ```
 
-* from Ingress
+* curl -XGET 'https://ingress/sample'
 ```
 $ root@k8s-worker1:/home/h# tcpdump -i calib43f921251f
 03:04:09.025471 IP 192.168.1.38.44304 > 192.168.1.40.http-alt: Flags [P.], seq 1:310, ack 1, win 229, options [nop,nop,TS val 2177334759 ecr 1588388826], length 309: HTTP: GET /sample HTTP/1.1
@@ -546,23 +546,47 @@ $ root@k8s-worker1:/home/h# tcpdump -i calib43f921251f
 
 <div style="font-size:75%">
 
-</div>
+## Controller의 상호 협력 방식
 
------------------------------------------
-
-<div style="font-size:75%">
+<img src="architecture-12.jpg" width="900px" />
 
 </div>
 
 -----------------------------------------
 
 <div style="font-size:75%">
+  
+## 실행 중인 Pod의 이해
+
+* Pod이 배포되면 항상 /pause를 실행하는 Pod Infra Container가 같이 배포.
+* Pod이 배포되면 Pod Infra Container가 먼저 실행되고 해당 Container가 하나의 namespace를 점유.
+* Pod 내의 다른 Container는 Pod Infra Container의 namespace를 공유하여 사용 (https://www.ianlewis.org/en/almighty-pause-container).
+
+<img src="architecture-13.jpg" width="1000px" />
 
 </div>
 
 -----------------------------------------
 
 <div style="font-size:75%">
+  
+## Inter-Pod Networking
+
+* Pod간 Networking은 CNI(Cloud Network Interface) Plug-In에 의해 수행.
+* Pod이 어떤 Node에 있건 관계없이 통신할 수 있어야 함.
+* Pod가 통신하는 데 사용하는 IP 주소는 변환되지 않아야 함(no NAT).
+* 이는 하나의 스위치에 연결 된 것처럼 간단하고 정확하게 통신 가능하도록 만듬 (Fabric).
+* 
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## Inter-Pod Networking
+
+<img src="architecture-14.jpg" width="800px" />
 
 </div>
 
