@@ -573,10 +573,11 @@ $ root@k8s-worker1:/home/h# tcpdump -i calib43f921251f
 ## Inter-Pod Networking
 
 * Pod간 Networking은 CNI(Cloud Network Interface) Plug-In에 의해 수행.
+* 상세한 구현 방식은 CNI별로 상이함.
 * Pod이 어떤 Node에 있건 관계없이 통신할 수 있어야 함.
 * Pod가 통신하는 데 사용하는 IP 주소는 변환되지 않아야 함(no NAT).
 * 이는 하나의 스위치에 연결 된 것처럼 간단하고 정확하게 통신 가능하도록 만듬 (Fabric).
-* 
+* Pod to Node, Node to Pod간의 통신에는 SNAT를 사용.
 
 </div>
 
@@ -591,3 +592,344 @@ $ root@k8s-worker1:/home/h# tcpdump -i calib43f921251f
 </div>
 
 -----------------------------------------
+
+<div style="font-size:75%">
+
+## 동일한 노드 상의 Pod간의 통신
+
+<img src="architecture-15.jpg" width="800px" />
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+  
+## 동일한 Node 상의 Pod간의 통신
+
+* Pod Infra Container가 실행되기 전 veth 쌍을 생성.
+* 하나는 Pod의 Namespace 내에, 하나는 Host의 Namespace 내에 생성.
+* Node 내의 모든 Container는 동일한 Bridge에 연결되므로 서로 통신이 가능.
+</br>
+
+```
+$ ifconfig
+cali0f45f098f23: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+cali60876d4f815: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+```
+
+```
+$ ip route
+...
+192.168.0.43 dev cali0f45f098f23 scope link
+192.168.0.44 dev cali6a5876e6908 scope link
+192.168.0.45 dev cali60876d4f815 scope link
+...
+```
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## 서로 다른 Node 상의 Pod간의 통신
+
+<img src="architecture-16.jpg" width="1200px" />
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## 서로 다른 Node 상의 Pod간의 통신
+
+* Pod의 IP 주소는 클러스터 내에서 유일해야 함.
+* Node의 Bridge는 겹치지 않는 주소 범위를 사용.
+* Node의 Physical Interface도 Node의 Bridge에 연결 됨.
+* Node A의 PodA에서 Node B의 Pod C로 패킷을 보내려면 Node A에서 Node B로 라우팅되도록 라우팅 테이블을 구성해야 함.
+
+```
+$ tcpdump -n -i tunl0
+04:14:41.984400 IP 192.168.0.45 > 192.168.1.43: ICMP echo request, id 65, seq 85, length 64
+04:14:41.984884 IP 192.168.1.43 > 192.168.0.45: ICMP echo reply, id 65, seq 85, length 64
+```
+```
+$ tcpdump -n -i enp0s8 ! port 22
+04:13:31.618048 IP 192.168.56.101 > 192.168.56.102: IP 192.168.0.45 > 192.168.1.43: ICMP echo request, id 65, seq 16, length 64 (ipip-proto-4)
+04:13:31.618480 IP 192.168.56.102 > 192.168.56.101: IP 192.168.1.43 > 192.168.0.45: ICMP echo reply, id 65, seq 16, length 64 (ipip-proto-4)
+```
+
+```
+$ ip route
+192.168.1.0/24 via 192.168.56.102 dev tunl0 proto bird onlink
+192.168.2.0/24 via 192.168.56.103 dev tunl0 proto bird onlink
+```
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## Service의 구현
+
+* Service와 관련된 모든 것은 각 노드에서 실행되는 kube-proxy에 의해 처리.
+* 각 Service는 고유한 IP와 Port를 얻음.
+* Service IP는 가상의 IP.
+* Service IP를 물리적으로 갖는 Interface가 없으므로 icmp 요청이 처리되지 않음.
+* API 서버에서 Service가 생성되면 가상 IP, Port 쌍이 즉시 할당 됨.
+* kube-proxy는 Service Resource의 생성 알람을 받으면 iptables에 규칙을 설정.
+* 목적지가 해당 Service인 경우 목적지 주소를 Service와 연결 된 Pod 중 하나로 변경(DNAT)하여 Redirect (Pod to Service).
+* Pod 외 (Node, cluster 밖의 client)에서 접근하는 경우 SNAT(Node의 IP), DNAT(Pod의 IP) 모두 필요.
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## Service의 구현
+
+<img src="architecture-17.jpg" width="600px" />
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## Service의 구현
+
+```
+$ iptables -L -t nat
+
+Chain PREROUTING (policy ACCEPT)
+target     prot opt source               destination
+KUBE-SERVICES  all  --  anywhere             anywhere             /* kubernetes service portals */
+
+Chain KUBE-SERVICES (2 references)
+target     prot opt source               destination
+KUBE-MARK-MASQ  tcp  -- !192.168.0.0/16       10.111.118.28        /* default/sample-service: cluster IP */ tcp dpt:http-alt
+KUBE-SVC-ZE62HOGUXOIF3MJ5  tcp  --  anywhere             10.111.118.28        /* default/sample-service: cluster IP */ tcp dpt:http-alt
+
+Chain KUBE-SVC-ZE62HOGUXOIF3MJ5 (2 references)
+target     prot opt source               destination
+KUBE-SEP-7AE52TSMNDEGV6BO  all  --  anywhere             anywhere             statistic mode random probability 0.50000000000
+KUBE-SEP-GEQ73U43LIPSQP2Z  all  --  anywhere             anywhere
+
+Chain KUBE-SEP-7AE52TSMNDEGV6BO (1 references)
+target     prot opt source               destination
+KUBE-MARK-MASQ  all  --  192.168.1.42         anywhere
+DNAT       tcp  --  anywhere             anywhere             tcp to:192.168.1.42:8080
+
+Chain KUBE-SEP-GEQ73U43LIPSQP2Z (1 references)
+target     prot opt source               destination
+KUBE-MARK-MASQ  all  --  192.168.2.30         anywhere
+DNAT       tcp  --  anywhere             anywhere             tcp to:192.168.2.30:8080
+```
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## Service의 구현
+
+```
+Chain KUBE-MARK-DROP (2 references)
+target     prot opt source               destination
+MARK       all  --  anywhere             anywhere             MARK or 0x8000
+
+Chain KUBE-MARK-MASQ (18 references)
+target     prot opt source               destination
+MARK       all  --  anywhere             anywhere             MARK or 0x4000
+
+Chain KUBE-POSTROUTING (1 references)
+target     prot opt source               destination
+MASQUERADE  all  --  anywhere             anywhere             /* kubernetes service traffic requiring SNAT */ mark match 0x4000/0x4000
+```
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+### Pod 밖에서 Service로 요청
+
+```
+$ tcpdump -i enp0s8 port 30001 -n
+05:17:50.632656 IP 192.168.56.1.55824 > 192.168.56.103.30001: Flags [SEW], seq 920096640, win 65535, options [mss 1460,nop,wscale 6,nop,nop,TS val 449946274 ecr 0,sackOK,eol], length 0
+05:17:50.632886 IP 192.168.56.103.30001 > 192.168.56.1.55824: Flags [S.E], seq 2034560536, ack 920096641, win 28960, options [mss 1460,sackOK,TS val 167059923 ecr 449946274,nop,wscale 7], length 0
+05:17:50.633116 IP 192.168.56.1.55824 > 192.168.56.103.30001: Flags [.], ack 1, win 2058, options [nop,nop,TS val 449946274 ecr 167059923], length 0
+05:17:50.633134 IP 192.168.56.1.55824 > 192.168.56.103.30001: Flags [P.], seq 1:85, ack 1, win 2058, options [nop,nop,TS val 449946274 ecr 167059923], length 84
+05:17:50.633251 IP 192.168.56.103.30001 > 192.168.56.1.55824: Flags [.], ack 85, win 227, options [nop,nop,TS val 167059923 ecr 449946274], length 0
+05:17:50.633746 IP 192.168.56.103.30001 > 192.168.56.1.55824: Flags [P.], seq 1:138, ack 85, win 227, options [nop,nop,TS val 167059924 ecr 449946274], length 137
+05:17:50.633944 IP 192.168.56.1.55824 > 192.168.56.103.30001: Flags [.], ack 138, win 2056, options [nop,nop,TS val 449946275 ecr 167059924], length 0
+05:17:50.633962 IP 192.168.56.1.55824 > 192.168.56.103.30001: Flags [F.], seq 85, ack 138, win 2056, options [nop,nop,TS val 449946275 ecr 167059924], length 0
+05:17:50.634127 IP 192.168.56.103.30001 > 192.168.56.1.55824: Flags [F.], seq 138, ack 86, win 227, options [nop,nop,TS val 167059924 ecr 449946275], length 0
+05:17:50.634320 IP 192.168.56.1.55824 > 192.168.56.103.30001: Flags [.], ack 139, win 2056, options [nop,nop,TS val 449946275 ecr 167059924], length 0
+```
+
+```
+$ tcpdump -i cali27c81818b22 -n
+05:17:50.632712 IP 10.0.2.22.55824 > 192.168.2.30.8080: Flags [SEW], seq 920096640, win 65535, options [mss 1460,nop,wscale 6,nop,nop,TS val 449946274 ecr 0,sackOK,eol], length 0
+05:17:50.632874 IP 192.168.2.30.8080 > 10.0.2.22.55824: Flags [S.E], seq 2034560536, ack 920096641, win 28960, options [mss 1460,sackOK,TS val 167059923 ecr 449946274,nop,wscale 7], length 0
+05:17:50.633127 IP 10.0.2.22.55824 > 192.168.2.30.8080: Flags [.], ack 1, win 2058, options [nop,nop,TS val 449946274 ecr 167059923], length 0
+05:17:50.633139 IP 10.0.2.22.55824 > 192.168.2.30.8080: Flags [P.], seq 1:85, ack 1, win 2058, options [nop,nop,TS val 449946274 ecr 167059923], length 84: HTTP: GET / HTTP/1.1
+05:17:50.633202 IP 192.168.2.30.8080 > 10.0.2.22.55824: Flags [.], ack 85, win 227, options [nop,nop,TS val 167059923 ecr 449946274], length 0
+05:17:50.633731 IP 192.168.2.30.8080 > 10.0.2.22.55824: Flags [P.], seq 1:138, ack 85, win 227, options [nop,nop,TS val 167059924 ecr 449946274], length 137: HTTP: HTTP/1.1 200 OK
+05:17:50.633960 IP 10.0.2.22.55824 > 192.168.2.30.8080: Flags [.], ack 138, win 2056, options [nop,nop,TS val 449946275 ecr 167059924], length 0
+05:17:50.633966 IP 10.0.2.22.55824 > 192.168.2.30.8080: Flags [F.], seq 85, ack 138, win 2056, options [nop,nop,TS val 449946275 ecr 167059924], length 0
+05:17:50.634115 IP 192.168.2.30.8080 > 10.0.2.22.55824: Flags [F.], seq 138, ack 86, win 227, options [nop,nop,TS val 167059924 ecr 449946275], length 0
+05:17:50.634369 IP 10.0.2.22.55824 > 192.168.2.30.8080: Flags [.], ack 139, win 2056, options [nop,nop,TS val 449946275 ecr 167059924], length 0
+
+```
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+  
+### Pod에서 Service로 요청 (다른 Node의 Pod으로 서비스 되는 경우)
+
+```
+$ tcpdump -i calib43f921251f -n
+05:14:05.077057 IP 192.168.1.42.54122 > 10.111.118.28.8080: Flags [S], seq 1210630612, win 29200, options [mss 1460,sackOK,TS val 2710881183 ecr 0,nop,wscale 7], length 0
+05:14:05.077767 IP 10.111.118.28.8080 > 192.168.1.42.54122: Flags [S.], seq 4123667957, ack 1210630613, win 28960, options [mss 1460,sackOK,TS val 411294588 ecr 2710881183,nop,wscale 7], length 0
+05:14:05.077789 IP 192.168.1.42.54122 > 10.111.118.28.8080: Flags [.], ack 1, win 229, options [nop,nop,TS val 2710881184 ecr 411294588], length 0
+05:14:05.078086 IP 192.168.1.42.54122 > 10.111.118.28.8080: Flags [P.], seq 1:83, ack 1, win 229, options [nop,nop,TS val 2710881184 ecr 411294588], length 82: HTTP: GET / HTTP/1.1
+05:14:05.078798 IP 10.111.118.28.8080 > 192.168.1.42.54122: Flags [.], ack 83, win 227, options [nop,nop,TS val 411294589 ecr 2710881184], length 0
+05:14:05.079175 IP 10.111.118.28.8080 > 192.168.1.42.54122: Flags [P.], seq 1:138, ack 83, win 227, options [nop,nop,TS val 411294590 ecr 2710881184], length 137: HTTP: HTTP/1.1 200 OK
+05:14:05.079193 IP 192.168.1.42.54122 > 10.111.118.28.8080: Flags [.], ack 138, win 237, options [nop,nop,TS val 2710881185 ecr 411294590], length 0
+05:14:05.079350 IP 192.168.1.42.54122 > 10.111.118.28.8080: Flags [F.], seq 83, ack 138, win 237, options [nop,nop,TS val 2710881185 ecr 411294590], length 0
+05:14:05.080079 IP 10.111.118.28.8080 > 192.168.1.42.54122: Flags [F.], seq 138, ack 84, win 227, options [nop,nop,TS val 411294591 ecr 2710881185], length 0
+05:14:05.080094 IP 192.168.1.42.54122 > 10.111.118.28.8080: Flags [.], ack 139, win 237, options [nop,nop,TS val 2710881186 ecr 411294591], length 0
+```
+
+```
+$ tcpdump -i cali27c81818b22 -n
+05:14:05.099668 IP 192.168.1.42.54122 > 192.168.2.30.8080: Flags [S], seq 1210630612, win 29200, options [mss 1460,sackOK,TS val 2710881183 ecr 0,nop,wscale 7], length 0
+05:14:05.099826 IP 192.168.2.30.8080 > 192.168.1.42.54122: Flags [S.], seq 4123667957, ack 1210630613, win 28960, options [mss 1460,sackOK,TS val 411294588 ecr 2710881183,nop,wscale 7], length 0
+05:14:05.100223 IP 192.168.1.42.54122 > 192.168.2.30.8080: Flags [.], ack 1, win 229, options [nop,nop,TS val 2710881184 ecr 411294588], length 0
+05:14:05.100782 IP 192.168.1.42.54122 > 192.168.2.30.8080: Flags [P.], seq 1:83, ack 1, win 229, options [nop,nop,TS val 2710881184 ecr 411294588], length 82: HTTP: GET / HTTP/1.1
+05:14:05.100806 IP 192.168.2.30.8080 > 192.168.1.42.54122: Flags [.], ack 83, win 227, options [nop,nop,TS val 411294589 ecr 2710881184], length 0
+05:14:05.101125 IP 192.168.2.30.8080 > 192.168.1.42.54122: Flags [P.], seq 1:138, ack 83, win 227, options [nop,nop,TS val 411294590 ecr 2710881184], length 137: HTTP: HTTP/1.1 200 OK
+05:14:05.101710 IP 192.168.1.42.54122 > 192.168.2.30.8080: Flags [.], ack 138, win 237, options [nop,nop,TS val 2710881185 ecr 411294590], length 0
+05:14:05.101944 IP 192.168.1.42.54122 > 192.168.2.30.8080: Flags [F.], seq 83, ack 138, win 237, options [nop,nop,TS val 2710881185 ecr 411294590], length 0
+05:14:05.102144 IP 192.168.2.30.8080 > 192.168.1.42.54122: Flags [F.], seq 138, ack 84, win 227, options [nop,nop,TS val 411294591 ecr 2710881185], length 0
+05:14:05.102585 IP 192.168.1.42.54122 > 192.168.2.30.8080: Flags [.], ack 139, win 237, options [nop,nop,TS val 2710881186 ecr 411294591], length 0
+```
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+### Pod에서 Service로 요청 (자신에게 서비스 되는 경우)
+
+```
+$ tcpdump -i calib43f921251f -n
+05:15:59.556723 IP 192.168.1.42.54308 > 10.111.118.28.8080: Flags [S], seq 4048875942, win 29200, options [mss 1460,sackOK,TS val 2710995663 ecr 0,nop,wscale 7], length 0
+05:15:59.556770 IP 10.0.2.21.54308 > 192.168.1.42.8080: Flags [S], seq 4048875942, win 29200, options [mss 1460,sackOK,TS val 2710995663 ecr 0,nop,wscale 7], length 0
+05:15:59.556779 IP 192.168.1.42.8080 > 10.0.2.21.54308: Flags [S.], seq 2680204874, ack 4048875943, win 28960, options [mss 1460,sackOK,TS val 1749589035 ecr 2710995663,nop,wscale 7], length 0
+05:15:59.556785 IP 10.111.118.28.8080 > 192.168.1.42.54308: Flags [S.], seq 2680204874, ack 4048875943, win 28960, options [mss 1460,sackOK,TS val 1749589035 ecr 2710995663,nop,wscale 7], length 0
+05:15:59.556792 IP 192.168.1.42.54308 > 10.111.118.28.8080: Flags [.], ack 1, win 229, options [nop,nop,TS val 2710995663 ecr 1749589035], length 0
+05:15:59.556796 IP 10.0.2.21.54308 > 192.168.1.42.8080: Flags [.], ack 1, win 229, options [nop,nop,TS val 2710995663 ecr 1749589035], length 0
+05:15:59.557335 IP 192.168.1.42.54308 > 10.111.118.28.8080: Flags [P.], seq 1:83, ack 1, win 229, options [nop,nop,TS val 2710995663 ecr 1749589035], length 82: HTTP: GET / HTTP/1.1
+05:15:59.557353 IP 10.0.2.21.54308 > 192.168.1.42.8080: Flags [P.], seq 1:83, ack 1, win 229, options [nop,nop,TS val 2710995663 ecr 1749589035], length 82: HTTP: GET / HTTP/1.1
+05:15:59.557361 IP 192.168.1.42.8080 > 10.0.2.21.54308: Flags [.], ack 83, win 227, options [nop,nop,TS val 1749589035 ecr 2710995663], length 0
+05:15:59.557366 IP 10.111.118.28.8080 > 192.168.1.42.54308: Flags [.], ack 83, win 227, options [nop,nop,TS val 1749589035 ecr 2710995663], length 0
+05:15:59.558809 IP 192.168.1.42.8080 > 10.0.2.21.54308: Flags [P.], seq 1:143, ack 83, win 227, options [nop,nop,TS val 1749589037 ecr 2710995663], length 142: HTTP: HTTP/1.1 200 OK
+05:15:59.558856 IP 10.111.118.28.8080 > 192.168.1.42.54308: Flags [P.], seq 1:143, ack 83, win 227, options [nop,nop,TS val 1749589037 ecr 2710995663], length 142: HTTP: HTTP/1.1 200 OK
+05:15:59.558861 IP 192.168.1.42.54308 > 10.111.118.28.8080: Flags [.], ack 143, win 237, options [nop,nop,TS val 2710995665 ecr 1749589037], length 0
+05:15:59.558869 IP 10.0.2.21.54308 > 192.168.1.42.8080: Flags [.], ack 143, win 237, options [nop,nop,TS val 2710995665 ecr 1749589037], length 0
+05:15:59.559946 IP 192.168.1.42.54308 > 10.111.118.28.8080: Flags [F.], seq 83, ack 143, win 237, options [nop,nop,TS val 2710995666 ecr 1749589037], length 0
+05:15:59.559959 IP 10.0.2.21.54308 > 192.168.1.42.8080: Flags [F.], seq 83, ack 143, win 237, options [nop,nop,TS val 2710995666 ecr 1749589037], length 0
+05:15:59.560205 IP 192.168.1.42.8080 > 10.0.2.21.54308: Flags [F.], seq 143, ack 84, win 227, options [nop,nop,TS val 1749589038 ecr 2710995666], length 0
+05:15:59.560265 IP 10.111.118.28.8080 > 192.168.1.42.54308: Flags [F.], seq 143, ack 84, win 227, options [nop,nop,TS val 1749589038 ecr 2710995666], length 0
+05:15:59.560271 IP 192.168.1.42.54308 > 10.111.118.28.8080: Flags [.], ack 144, win 237, options [nop,nop,TS val 2710995666 ecr 1749589038], length 0
+05:15:59.560280 IP 10.0.2.21.54308 > 192.168.1.42.8080: Flags [.], ack 144, win 237, options [nop,nop,TS val 2710995666 ecr 1749589038], length 0
+```
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## High-Availability Cluster
+
+* Kubernetes를 사용해 Application을 실행하는 이유 중 하나는 장애시에도 지속적으로 서비스를 하기 위함.
+* 장애시에도 중단 없이 서비스되려면 Application 뿐 아니라 Kubernetes의 Control Plane도 항상 작동해야 함.
+
+</br>
+
+## Application의 High-Availability
+
+* RC, RS로 배포하여 적절한 Replica를 구성.
+* 수평확장이 불가하더라도 Replica가 1인 RC, RS로 배포하면 장애 시 재배포.
+* 수평확장이 불가할 때 Leader Election을 이용해 고가용성을 확보 하면서 하나의 Pod만 동작하게 구성 가능.(https://github.com/kubernetes/contrib/tree/master/election)
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+## Kubernetes Control Plane의 High-Availability
+
+<img src="architecture-18.jpg" width="1200px" />
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+
+### etcd Cluster
+
+* etcd는 분산 시스템으로 설계 됨.
+* Split Brain을 방지하기 위해 홀수개(3, 5, 7)의 Node로 실행
+
+### API 서버
+
+* API 서버는 (거의 완전하게..?) Stateless하므로 필요한 만큼 실행할 수 있음.
+
+### Controller와 Scheduler
+
+* Stateless하지 않은 컴포넌트기 때문에 수평확장이 어려움.
+* --leader-elcect=true로 실행되면 선출된 리더일 때만 동작.
+* 그 외의 컴포넌트는 대기중이며 현재의 리더가 실패할 경우 새로운 리더가 선출되고 새로 선출된 리더만 동작.
+* Endpoints의 Annotation(control-plane.alpha.kubernetes.io/leader)의 holderIdentity에 자신의 id를 등록하여 주기적으로 update.
+
+</div>
+
+-----------------------------------------
+
+<div style="font-size:75%">
+  
+### Controller와 Scheduler
+
+<img src="architecture-19.jpg" width="800px" />
+
+```
+$ kubectl describe endpoints kube-scheduler -n kube-system
+Name:         kube-scheduler
+Namespace:    kube-system
+Labels:       <none>
+Annotations:  control-plane.alpha.kubernetes.io/leader:
+                {"holderIdentity":"k8s-master_3828400c-4eab-11e9-b23d-0800271eafb6","leaseDurationSeconds":15,"acquireTime":"2019-03-25T03:08:36Z","renewT...
+Subsets:
+Events:  <none>
+```
+
+```
+$ curl http://localhost:8080/api/v1/namespaces/kube-system/endpoints?watch=true
+```
+</div>
