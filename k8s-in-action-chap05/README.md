@@ -265,10 +265,14 @@ spec:
 
 * KUBE-NODEPORTS Chain (worker node 전체 공통)
 <img src="service-11.png" />
+
 * KUBE-XLB Chain (worker node 별로 룰이 달라짐)
 * 해당 노드에 전달할 pod가 없는 경우
+
 <img src="service-12.png" />
+
 * 해당 노드에 전달할 pod가 있는 경우
+
 <img src="service-13.png" />
 
 </div>
