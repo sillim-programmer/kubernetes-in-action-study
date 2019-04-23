@@ -762,6 +762,8 @@ MASQUERADE  all  --  anywhere             anywhere             /* kubernetes ser
 
 ### Pod 밖에서 Service로 요청
 
+* 192.168.56.1 (Client)
+* 192.168.56.103 (Node)
 ```
 $ tcpdump -i enp0s8 port 30001 -n
 05:17:50.632656 IP 192.168.56.1.55824 > 192.168.56.103.30001: Flags [SEW], seq 920096640, win 65535, options [mss 1460,nop,wscale 6,nop,nop,TS val 449946274 ecr 0,sackOK,eol], length 0
@@ -775,7 +777,8 @@ $ tcpdump -i enp0s8 port 30001 -n
 05:17:50.634127 IP 192.168.56.103.30001 > 192.168.56.1.55824: Flags [F.], seq 138, ack 86, win 227, options [nop,nop,TS val 167059924 ecr 449946275], length 0
 05:17:50.634320 IP 192.168.56.1.55824 > 192.168.56.103.30001: Flags [.], ack 139, win 2056, options [nop,nop,TS val 449946275 ecr 167059924], length 0
 ```
-
+* 10.0.2.22 (Node)
+* 192.168.2.30 (Pod)
 ```
 $ tcpdump -i cali27c81818b22 -n
 05:17:50.632712 IP 10.0.2.22.55824 > 192.168.2.30.8080: Flags [SEW], seq 920096640, win 65535, options [mss 1460,nop,wscale 6,nop,nop,TS val 449946274 ecr 0,sackOK,eol], length 0
@@ -799,6 +802,8 @@ $ tcpdump -i cali27c81818b22 -n
   
 ### Pod에서 Service로 요청 (다른 Node의 Pod으로 서비스 되는 경우)
 
+* 192.168.1.42 (Source Pod)
+* 10.111.118.28 (Service)
 ```
 $ tcpdump -i calib43f921251f -n
 05:14:05.077057 IP 192.168.1.42.54122 > 10.111.118.28.8080: Flags [S], seq 1210630612, win 29200, options [mss 1460,sackOK,TS val 2710881183 ecr 0,nop,wscale 7], length 0
@@ -813,6 +818,8 @@ $ tcpdump -i calib43f921251f -n
 05:14:05.080094 IP 192.168.1.42.54122 > 10.111.118.28.8080: Flags [.], ack 139, win 237, options [nop,nop,TS val 2710881186 ecr 411294591], length 0
 ```
 
+* 192.168.1.42 (Source Pod)
+* 192.168.2.30 (Destination Pod)
 ```
 $ tcpdump -i cali27c81818b22 -n
 05:14:05.099668 IP 192.168.1.42.54122 > 192.168.2.30.8080: Flags [S], seq 1210630612, win 29200, options [mss 1460,sackOK,TS val 2710881183 ecr 0,nop,wscale 7], length 0
@@ -835,6 +842,9 @@ $ tcpdump -i cali27c81818b22 -n
 
 ### Pod에서 Service로 요청 (자신에게 서비스 되는 경우)
 
+* 192.168.1.42 (Source Pod)
+* 10.111.118.28 (Service)
+* 10.0.2.21 (Source Pod의 Node)
 ```
 $ tcpdump -i calib43f921251f -n
 05:15:59.556723 IP 192.168.1.42.54308 > 10.111.118.28.8080: Flags [S], seq 4048875942, win 29200, options [mss 1460,sackOK,TS val 2710995663 ecr 0,nop,wscale 7], length 0
